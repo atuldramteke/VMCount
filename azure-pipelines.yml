@@ -1,0 +1,51 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'
+
+steps:
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: 'YourServiceConnection'
+    scriptType: 'bat'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      echo Getting current VM count...
+      az vm list --query "length(@)" -o tsv > vmCount.txt
+      set /p CURRENT_VM_COUNT=<vmCount.txt
+      set TARGET_VM_COUNT=5
+      set VM_COUNT_TO_DEPLOY=0
+
+      if %TARGET_VM_COUNT% GTR %CURRENT_VM_COUNT% (
+        set /a VM_COUNT_TO_DEPLOY=%TARGET_VM_COUNT% - %CURRENT_VM_COUNT%
+      )
+
+      echo ##vso[task.setvariable variable=vmCountToDeploy]%VM_COUNT_TO_DEPLOY%
+      echo Current VM Count: %CURRENT_VM_COUNT%
+      echo Target VM Count: %TARGET_VM_COUNT%
+      echo VM Count to Deploy: %VM_COUNT_TO_DEPLOY%
+
+- task: TerraformInstaller@0
+  inputs:
+    terraformVersion: 'latest'
+
+- task: TerraformTaskV1@0
+  displayName: 'Terraform Init'
+  inputs:
+    command: 'init'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+
+- task: TerraformTaskV1@0
+  displayName: 'Terraform Plan'
+  inputs:
+    command: 'plan'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+    commandOptions: '-var vm_count=$(vmCountToDeploy)'
+
+- task: TerraformTaskV1@0
+  displayName: 'Terraform Apply'
+  inputs:
+    command: 'apply'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/terraform'
+    commandOptions: '-auto-approve -var vm_count=$(vmCountToDeploy)'
